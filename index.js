@@ -41,9 +41,9 @@ function saveSubmissions(data) {
 
 const submissions = new Map(Object.entries(loadSubmissions()));
 
-// ===== CODES SYSTEM (FIXED - WAS MISSING) =====
+// ===== CODES SYSTEM (UPDATED STRUCTURE) =====
 function loadCodes() {
-  if (!fs.existsSync('./codes.json')) return [];
+  if (!fs.existsSync('./codes.json')) return {};
   return JSON.parse(fs.readFileSync('./codes.json'));
 }
 
@@ -131,6 +131,7 @@ client.on('messageCreate', async message => {
   saveSubmissions(Object.fromEntries(submissions));
 });
 
+// ===== INTERACTIONS =====
 client.on('interactionCreate', async interaction => {
 
   // ================= BUTTONS =================
@@ -200,6 +201,7 @@ client.on('interactionCreate', async interaction => {
   // ================= SLASH COMMANDS =================
   if (!interaction.isChatInputCommand()) return;
 
+  // ===== HELP =====
   if (interaction.commandName === 'help') {
     return interaction.reply({
       embeds: [
@@ -208,7 +210,7 @@ client.on('interactionCreate', async interaction => {
           .setDescription(`/claim ↠ Claim your giveaway reward
 /redeem ↠ Redeem your claim code
 /help ↠ View all bot commands
-/status ↠ Check your submission status
+/status ↠ Check submission status
 /lookup ↠ Lookup a user submission
 /forceapprove ↠ Force approve a submission
 /stats ↠ View bot statistics`)
@@ -221,16 +223,23 @@ client.on('interactionCreate', async interaction => {
   const member = interaction.member;
   const hasRole = member.roles.cache.has(config.winnerRoleId);
 
-  // ===== STATUS =====
+  // ===== STATUS (UPDATED: BY CODE) =====
   if (interaction.commandName === 'status') {
-    const submission = submissions.get(interaction.user.id);
+    const code = interaction.options.getString('code');
+    const codes = loadCodes();
 
-    if (!submission) {
-      return interaction.reply({ content: 'No submission found.', ephemeral: true });
+    const entry = codes[code];
+
+    if (!entry) {
+      return interaction.reply({ content: '❌ Invalid code.', ephemeral: true });
     }
 
     return interaction.reply({
-      content: `Your submission status: **${submission.status.toUpperCase()}**`,
+      content:
+        `📦 Code: **${code}**\n` +
+        `👤 User: <@${entry.userId}>\n` +
+        `📊 Status: ${entry.used ? 'USED' : 'VALID'}\n` +
+        `🎯 Type: ${entry.type || 'N/A'}`,
       ephemeral: true
     });
   }
@@ -283,12 +292,13 @@ client.on('interactionCreate', async interaction => {
     });
   }
 
-  // ===== STATS =====
+  // ===== STATS (UPDATED) =====
   if (interaction.commandName === 'stats') {
     const codes = loadCodes();
 
-    const totalCodes = codes.length;
-    const usedCodes = codes.filter(c => c.used).length;
+    const totalCodes = Object.keys(codes).length;
+    const usedCodes = Object.values(codes).filter(c => c.used).length;
+
     const pendingSubs = [...submissions.values()].filter(s => s.status === 'pending').length;
     const approvedSubs = [...submissions.values()].filter(s => s.status === 'approved').length;
     const deniedSubs = [...submissions.values()].filter(s => s.status === 'denied').length;
@@ -310,7 +320,7 @@ client.on('interactionCreate', async interaction => {
     });
   }
 
-  // ===== CLAIM (FIXED + SAFE) =====
+  // ===== CLAIM (UPDATED: LOGGING STRUCTURE) =====
   if (interaction.commandName === 'claim') {
     try {
       const now = Date.now();
@@ -318,7 +328,7 @@ client.on('interactionCreate', async interaction => {
 
       if (lastClaim && now - lastClaim < COOLDOWN_MS) {
         const remaining = Math.ceil((COOLDOWN_MS - (now - lastClaim)) / 1000);
-        return await interaction.reply({
+        return interaction.reply({
           content: `Please wait ${remaining}s before using /claim again.`,
           ephemeral: true
         });
@@ -327,7 +337,7 @@ client.on('interactionCreate', async interaction => {
       claimCooldown.set(interaction.user.id, now);
 
       if (!hasRole) {
-        return await interaction.reply({
+        return interaction.reply({
           content: 'Access denied. Winner role not detected.',
           ephemeral: true
         });
@@ -335,7 +345,7 @@ client.on('interactionCreate', async interaction => {
 
       const type = interaction.options.getString('type');
       if (!type) {
-        return await interaction.reply({
+        return interaction.reply({
           content: 'Missing required option: type',
           ephemeral: true
         });
@@ -344,12 +354,13 @@ client.on('interactionCreate', async interaction => {
       const code = generateCode();
       const codes = loadCodes();
 
-      codes.push({
-        code,
+      // STORE AS OBJECT KEYED BY CODE
+      codes[code] = {
         userId: interaction.user.id,
         type,
-        used: false
-      });
+        used: false,
+        createdAt: Date.now()
+      };
 
       saveCodes(codes);
 
@@ -361,7 +372,7 @@ Key: ${code}
 Use /redeem ${code} to continue.`
       ).catch(() => {});
 
-      return await interaction.reply({
+      return interaction.reply({
         content: 'Check your DMs for your code.',
         ephemeral: true
       });
@@ -382,7 +393,7 @@ Use /redeem ${code} to continue.`
     const codeInput = interaction.options.getString('code');
     const codes = loadCodes();
 
-    const entry = codes.find(c => c.code === codeInput);
+    const entry = codes[codeInput];
 
     if (!entry) {
       return interaction.reply({ content: 'Invalid code.', ephemeral: true });
