@@ -216,7 +216,11 @@ const commands = [
       option.setName('code')
         .setDescription('Your code')
         .setRequired(true)
-    )
+    ),
+
+  new SlashCommandBuilder()
+    .setName("help")
+    .setDescription('View all bot commands')
 ].map(cmd => cmd.toJSON());
 
 // ===== REGISTER COMMANDS =====
@@ -255,6 +259,21 @@ client.once('ready', () => {
 // ===== INTERACTIONS =====
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
+
+  if (interaction.commandName === 'help') {
+    return interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle('Bot Commands')
+          .setDescription(`/claim ↠ Claim your giveaway reward
+            /redeem ↠ Redeem your claim code
+            /help ↠ View all bot commands`
+          )
+          .setColor(0x5865F2)
+      ],
+      ephemeral: true
+    });
+  }
 
   const member = interaction.member;
   const hasRole = member.roles.cache.has(config.winnerRoleId);
