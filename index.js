@@ -113,162 +113,88 @@ client.on('messageCreate', async message => {
   saveSubmissions(Object.fromEntries(submissions));
 });
 
-// ===== BUTTON HANDLER =====
-client.on(Events.InteractionCreate, async interaction => {
-  if (!interaction.isButton()) return;
-
-  const [action, userId] = interaction.customId.split('_');
-  const submission = submissions.get(userId);
-
-  if (!submission) {
-    return interaction.reply({
-      content: 'Submission not found (possibly after restart).',
-      ephemeral: true
-    });
-  }
-
-  if (action === 'approve') {
-    submission.status = 'approved';
-
-    const embed = EmbedBuilder.from(interaction.message.embeds[0])
-      .setFields(
-        { name: 'User', value: `<@${userId}>`, inline: true },
-        { name: 'Status', value: '🟢 Approved', inline: true }
-      )
-      .setColor(0x2ECC71);
-
-    await interaction.message.edit({
-      embeds: [embed],
-      components: []
-    });
-
-    await logAction({
-      userId,
-      action: 'approved',
-      moderatorTag: interaction.user.tag
-    });
-
-    await interaction.reply({ content: 'Submission approved.', ephemeral: true });
-  }
-
-  if (action === 'reject') {
-    submission.status = 'denied';
-
-    const embed = EmbedBuilder.from(interaction.message.embeds[0])
-      .setFields(
-        { name: 'User', value: `<@${userId}>`, inline: true },
-        { name: 'Status', value: '🔴 Denied', inline: true }
-      )
-      .setColor(0xE74C3C);
-
-    await interaction.message.edit({
-      embeds: [embed],
-      components: []
-    });
-
-    await logAction({
-      userId,
-      action: 'rejected',
-      moderatorTag: interaction.user.tag
-    });
-
-    await interaction.reply({ content: 'Submission rejected.', ephemeral: true });
-  }
-
-  saveSubmissions(Object.fromEntries(submissions));
-});
-
-// ===== DATABASE =====
-function loadCodes() {
-  if (!fs.existsSync('./codes.json')) return [];
-  return JSON.parse(fs.readFileSync('./codes.json'));
-}
-
-function saveCodes(data) {
-  fs.writeFileSync('./codes.json', JSON.stringify(data, null, 2));
-}
-
-// ===== CODE GENERATOR =====
-function generateCode() {
-  return Math.random().toString(36).substring(2, 8).toUpperCase();
-}
-
-// ===== COMMANDS =====
-const commands = [
-  new SlashCommandBuilder()
-    .setName('claim')
-    .setDescription('Claim your giveaway reward')
-    .addStringOption(option =>
-      option.setName('type')
-        .setDescription('Reward type')
-        .setRequired(true)
-        .addChoices(
-          { name: 'Robux', value: 'robux' },
-          { name: 'Nitro', value: 'nitro' },
-          { name: 'Giftcard', value: 'giftcard' }
-        )
-    ),
-
-  new SlashCommandBuilder()
-    .setName('redeem')
-    .setDescription('Redeem your code')
-    .addStringOption(option =>
-      option.setName('code')
-        .setDescription('Your code')
-        .setRequired(true)
-    ),
-
-  new SlashCommandBuilder()
-    .setName("help")
-    .setDescription('View all bot commands')
-].map(cmd => cmd.toJSON());
-
-// ===== REGISTER COMMANDS =====
-const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
-
-(async () => {
-  try {
-    console.log('🔄 Registering commands...');
-    await rest.put(
-      Routes.applicationGuildCommands(config.clientId, config.guildId),
-      { body: commands }
-    );
-    console.log('✅ Commands registered.');
-  } catch (err) {
-    console.error(err);
-  }
-})();
-
-// ===== READY =====
-client.once('ready', () => {
-  console.log(`✅ Logged in as ${client.user.tag}`);
-
-  client.user.setPresence({
-    status: 'online',
-    activities: [
-      {
-        name: 'Claiming giveaways in /uhg',
-        type: 1, // 1 = STREAMING
-        url: 'https://twitch.tv/x6cs' // required for streaming
-      }
-    ]
-  });
-});
-
-
-// ===== INTERACTIONS =====
 client.on('interactionCreate', async interaction => {
+
+  // ================= BUTTONS =================
+  if (interaction.isButton()) {
+    const [action, userId] = interaction.customId.split('_');
+    const submission = submissions.get(userId);
+
+    if (!submission) {
+      return interaction.reply({
+        content: 'Submission not found (possibly after restart).',
+        ephemeral: true
+      });
+    }
+
+    if (action === 'approve') {
+      submission.status = 'approved';
+
+      const embed = EmbedBuilder.from(interaction.message.embeds[0])
+        .setFields(
+          { name: 'User', value: `<@${userId}>`, inline: true },
+          { name: 'Status', value: '🟢 Approved', inline: true }
+        )
+        .setColor(0x2ECC71);
+
+      await interaction.message.edit({
+        embeds: [embed],
+        components: []
+      });
+
+      await logAction({
+        userId,
+        action: 'approved',
+        moderatorTag: interaction.user.tag
+      });
+
+      await interaction.reply({ content: 'Submission approved.', ephemeral: true });
+    }
+
+    if (action === 'reject') {
+      submission.status = 'denied';
+
+      const embed = EmbedBuilder.from(interaction.message.embeds[0])
+        .setFields(
+          { name: 'User', value: `<@${userId}>`, inline: true },
+          { name: 'Status', value: '🔴 Denied', inline: true }
+        )
+        .setColor(0xE74C3C);
+
+      await interaction.message.edit({
+        embeds: [embed],
+        components: []
+      });
+
+      await logAction({
+        userId,
+        action: 'rejected',
+        moderatorTag: interaction.user.tag
+      });
+
+      await interaction.reply({ content: 'Submission rejected.', ephemeral: true });
+    }
+
+    saveSubmissions(Object.fromEntries(submissions));
+    return;
+  }
+
+  // ================= SLASH COMMANDS =================
   if (!interaction.isChatInputCommand()) return;
 
+  // ===== HELP =====
   if (interaction.commandName === 'help') {
     return interaction.reply({
       embeds: [
         new EmbedBuilder()
           .setTitle('Bot Commands')
           .setDescription(`/claim ↠ Claim your giveaway reward
-            /redeem ↠ Redeem your claim code
-            /help ↠ View all bot commands`
-          )
+/redeem ↠ Redeem your claim code
+/help ↠ View all bot commands
+/status ↠ Check your submission status
+/lookup ↠ Lookup a user submission
+/forceapprove ↠ Force approve a submission
+/stats ↠ View bot statistics`)
           .setColor(0x5865F2)
       ],
       ephemeral: true
@@ -278,10 +204,98 @@ client.on('interactionCreate', async interaction => {
   const member = interaction.member;
   const hasRole = member.roles.cache.has(config.winnerRoleId);
 
+  // ===== STATUS =====
+  if (interaction.commandName === 'status') {
+    const submission = submissions.get(interaction.user.id);
+
+    if (!submission) {
+      return interaction.reply({ content: 'No submission found.', ephemeral: true });
+    }
+
+    return interaction.reply({
+      content: `Your submission status: **${submission.status.toUpperCase()}**`,
+      ephemeral: true
+    });
+  }
+
+  // ===== LOOKUP =====
+  if (interaction.commandName === 'lookup') {
+    const user = interaction.options.getUser('user');
+    const submission = submissions.get(user.id);
+
+    if (!submission) {
+      return interaction.reply({ content: 'No submission found for this user.', ephemeral: true });
+    }
+
+    return interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle('User Lookup')
+          .addFields(
+            { name: 'User', value: `<@${user.id}>`, inline: true },
+            { name: 'Status', value: submission.status, inline: true }
+          )
+          .setDescription(`\`\`\`\n${submission.content}\n\`\`\``)
+          .setColor(0x3498DB)
+      ],
+      ephemeral: true
+    });
+  }
+
+  // ===== FORCE APPROVE =====
+  if (interaction.commandName === 'forceapprove') {
+    const user = interaction.options.getUser('user');
+    const submission = submissions.get(user.id);
+
+    if (!submission) {
+      return interaction.reply({ content: 'No submission found.', ephemeral: true });
+    }
+
+    submission.status = 'approved';
+    saveSubmissions(Object.fromEntries(submissions));
+
+    await logAction({
+      userId: user.id,
+      action: 'force approved',
+      moderatorTag: interaction.user.tag
+    });
+
+    return interaction.reply({
+      content: `Approved <@${user.id}> successfully.`,
+      ephemeral: true
+    });
+  }
+
+  // ===== STATS =====
+  if (interaction.commandName === 'stats') {
+    const codes = loadCodes();
+
+    const totalCodes = codes.length;
+    const usedCodes = codes.filter(c => c.used).length;
+    const pendingSubs = [...submissions.values()].filter(s => s.status === 'pending').length;
+    const approvedSubs = [...submissions.values()].filter(s => s.status === 'approved').length;
+    const deniedSubs = [...submissions.values()].filter(s => s.status === 'denied').length;
+
+    return interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle('Bot Statistics')
+          .addFields(
+            { name: 'Total Codes', value: `${totalCodes}`, inline: true },
+            { name: 'Redeemed Codes', value: `${usedCodes}`, inline: true },
+            { name: 'Pending', value: `${pendingSubs}`, inline: true },
+            { name: 'Approved', value: `${approvedSubs}`, inline: true },
+            { name: 'Denied', value: `${deniedSubs}`, inline: true }
+          )
+          .setColor(0x5865F2)
+      ],
+      ephemeral: true
+    });
+  }
+
   // ===== CLAIM =====
   if (interaction.commandName === 'claim') {
 
-    // cooldown
     const now = Date.now();
     const lastClaim = claimCooldown.get(interaction.user.id);
 
@@ -316,49 +330,18 @@ client.on('interactionCreate', async interaction => {
 
     saveCodes(codes);
 
-    let claimMessage = '';
+    await interaction.user.send(
+`You claimed your ${type} giveaway!
 
-    if (type === 'robux') {
-      claimMessage =
-`**You claimed your Robux giveaway! Congrats**
+Key: ${code}
 
-**__Key:__** \`\` ${code} \`\`
+Use /redeem ${code} to continue.`
+    ).catch(() => {});
 
-Go back into the server, type /redeem ${code} to continue claiming your giveaway!`;
-    }
-
-    if (type === 'nitro') {
-      claimMessage =
-`**You claimed your Nitro giveaway! Congrats**
-
-**__Key:__** \`\` ${code} \`\`
-
-Go back into the server, type /redeem ${code} to continue claiming your giveaway!`;
-    }
-
-    if (type === 'giftcard') {
-      claimMessage =
-`**You claimed your Giftcard giveaway! Congrats**
-
-**__Key:__** \`\` ${code} \`\`
-
-Go back into the server, type /redeem ${code} to continue claiming your giveaway!`;
-    }
-
-    try {
-      await interaction.user.send(claimMessage);
-
-      await interaction.reply({
-        content: 'Check your DMs for your code.',
-        ephemeral: true
-      });
-
-    } catch {
-      await interaction.reply({
-        content: 'Enable DMs to receive your code.',
-        ephemeral: true
-      });
-    }
+    return interaction.reply({
+      content: 'Check your DMs for your code.',
+      ephemeral: true
+    });
   }
 
   // ===== REDEEM =====
@@ -383,54 +366,13 @@ Go back into the server, type /redeem ${code} to continue claiming your giveaway
     entry.used = true;
     saveCodes(codes);
 
-    let template = '';
-
-    if (entry.type === 'robux') {
-      template =
-`**You successfully redeemed your Robux!**
-
-Your Roblox username: 
-
-The amount you won:
-
-Gamepass link:
-
-[If you don't know how to make a gamepass](https://youtube.com/shorts/IMFBbgoRNqY)`;
-    }
-
-    if (entry.type === 'nitro') {
-      template =
-`**Nitro Redeemed Successfully!** 
-
-\`\` Please confirm your Discord username below so we can process your $10 Nitro gift \`\`
-
-Discord Username:
-
-Delivery Notes?:`;
-    }
-
-    if (entry.type === 'giftcard') {
-      template =
-`Congratulations — your gift card has been claimed!
-
-Please confirm the details below so we can send your code 
-
-Discord username:
-
-Gift card type:
-
-Amount:`;
-    }
-
-    await interaction.user.send(template);
-
-    await interaction.reply({
-      content: 'Check your DMs for instructions.',
-      ephemeral: true
-    });
+    await interaction.user.send('Redeem instructions sent.');
+    await interaction.reply({ content: 'Check your DMs for instructions.', ephemeral: true });
 
     await interaction.member.roles.remove(config.winnerRoleId);
   }
+
 });
+
 
 client.login(process.env.TOKEN);
