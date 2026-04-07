@@ -41,6 +41,25 @@ function saveSubmissions(data) {
 
 const submissions = new Map(Object.entries(loadSubmissions()));
 
+// ===== CODES SYSTEM (FIXED - WAS MISSING) =====
+function loadCodes() {
+  if (!fs.existsSync('./codes.json')) return [];
+  return JSON.parse(fs.readFileSync('./codes.json'));
+}
+
+function saveCodes(data) {
+  fs.writeFileSync('./codes.json', JSON.stringify(data, null, 2));
+}
+
+function generateCode(length = 8) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
 // ===== AUDIT LOGGING =====
 async function logAction({ userId, action, moderatorTag }) {
   const logChannel = client.channels.cache.get(config.logChannelId);
@@ -63,7 +82,6 @@ client.on('messageCreate', async message => {
 
   const content = message.content.toLowerCase();
 
-  // Prevent duplicate submissions
   if (submissions.has(message.author.id)) return;
 
   const isSubmission =
@@ -182,7 +200,6 @@ client.on('interactionCreate', async interaction => {
   // ================= SLASH COMMANDS =================
   if (!interaction.isChatInputCommand()) return;
 
-  // ===== HELP =====
   if (interaction.commandName === 'help') {
     return interaction.reply({
       embeds: [
@@ -293,55 +310,71 @@ client.on('interactionCreate', async interaction => {
     });
   }
 
-  // ===== CLAIM =====
+  // ===== CLAIM (FIXED + SAFE) =====
   if (interaction.commandName === 'claim') {
+    try {
+      const now = Date.now();
+      const lastClaim = claimCooldown.get(interaction.user.id);
 
-    const now = Date.now();
-    const lastClaim = claimCooldown.get(interaction.user.id);
+      if (lastClaim && now - lastClaim < COOLDOWN_MS) {
+        const remaining = Math.ceil((COOLDOWN_MS - (now - lastClaim)) / 1000);
+        return await interaction.reply({
+          content: `Please wait ${remaining}s before using /claim again.`,
+          ephemeral: true
+        });
+      }
 
-    if (lastClaim && now - lastClaim < COOLDOWN_MS) {
-      const remaining = Math.ceil((COOLDOWN_MS - (now - lastClaim)) / 1000);
-      return interaction.reply({
-        content: `Please wait ${remaining}s before using /claim again.`,
-        ephemeral: true
+      claimCooldown.set(interaction.user.id, now);
+
+      if (!hasRole) {
+        return await interaction.reply({
+          content: 'Access denied. Winner role not detected.',
+          ephemeral: true
+        });
+      }
+
+      const type = interaction.options.getString('type');
+      if (!type) {
+        return await interaction.reply({
+          content: 'Missing required option: type',
+          ephemeral: true
+        });
+      }
+
+      const code = generateCode();
+      const codes = loadCodes();
+
+      codes.push({
+        code,
+        userId: interaction.user.id,
+        type,
+        used: false
       });
-    }
 
-    claimCooldown.set(interaction.user.id, now);
+      saveCodes(codes);
 
-    if (!hasRole) {
-      return interaction.reply({
-        content: 'Access denied. Winner role not detected.',
-        ephemeral: true
-      });
-    }
-
-    const type = interaction.options.getString('type');
-    const code = generateCode();
-
-    const codes = loadCodes();
-
-    codes.push({
-      code,
-      userId: interaction.user.id,
-      type,
-      used: false
-    });
-
-    saveCodes(codes);
-
-    await interaction.user.send(
+      await interaction.user.send(
 `You claimed your ${type} giveaway!
 
 Key: ${code}
 
 Use /redeem ${code} to continue.`
-    ).catch(() => {});
+      ).catch(() => {});
 
-    return interaction.reply({
-      content: 'Check your DMs for your code.',
-      ephemeral: true
-    });
+      return await interaction.reply({
+        content: 'Check your DMs for your code.',
+        ephemeral: true
+      });
+
+    } catch (err) {
+      console.error("CLAIM ERROR:", err);
+
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp({ content: 'An error occurred.', ephemeral: true });
+      } else {
+        await interaction.reply({ content: 'An error occurred.', ephemeral: true });
+      }
+    }
   }
 
   // ===== REDEEM =====
@@ -373,6 +406,5 @@ Use /redeem ${code} to continue.`
   }
 
 });
-
 
 client.login(process.env.TOKEN);
